@@ -2,28 +2,61 @@
 using System.Net.Sockets;
 using System.Text;
 using System.Timers;
+using CommandLine;
 
 namespace RemoteDebugger
 {
 	class Program
 	{
+		public class ArgumentBuilder
+		{
+			[Option('i', "infinite", Default = false, HelpText = "If set to true, it will always try to reconnect.", Required = false)]
+			public bool argInfinite { get; set; }
+
+			[Option('a', "attempts", Default = 1, HelpText = "How many times it should try to reconnect.", Required = false)]
+			public int argAttempts { get; set; }
+
+
+			[Option("ip", Default = "192.168.49.1", HelpText = "The IP of the Robot Controller.", Required = false)]
+			public string argIp { get; set; }
+
+
+			[Option('p', "port", Default = 8333, HelpText = "The port that is listening on the Robot Controller.", Required = false)]
+			public int argPort { get; set; }
+		}
 
 		static NetworkStream stream;
 		static bool heartbeatFailed = false;
-		static Timer aTimer;
+		static System.Timers.Timer aTimer;
 
 		static void Main(string[] args)
 		{
-			aTimer = new Timer(10000);
+			aTimer = new System.Timers.Timer(10000);
 			aTimer.Enabled = false;
 			aTimer.Elapsed += SendHeartbeet;
 			aTimer.AutoReset = true;
 			Console.WriteLine("Starting connection...");
-			ConnectForever("192.168.0.171", 8333);
+			Parser.Default.ParseArguments<ArgumentBuilder>(args)
+				   .WithParsed(options =>
+				   {
+					   if (options.argInfinite)
+					   {
+						   ConnectForever(options.argIp, options.argPort);
+					   }
+					   else
+					   {
+						   Connect(options.argIp, options.argPort, options.argAttempts);
+					   }
+					   Console.WriteLine("Either a fatal error has occured or there have been too many attempts, restarting");
+				   });
 		}
 		static void ConnectForever(string server, int port)
 		{
-			Connect(server, port, int.MaxValue);
+			while (true)
+			{
+				Connect(server, port, 1);
+				System.Threading.Thread.Sleep(500);
+			}
 		}
 		static void Connect(string server, int port, int attempts = 1)
 		{
@@ -63,7 +96,7 @@ namespace RemoteDebugger
 								responseString = Encoding.ASCII.GetString(data, 0, byteResponse);
 								if (!String.IsNullOrWhiteSpace(responseString))
 								{
-									Console.WriteLine("Received: {0}", responseString);
+									Console.Write(responseString);
 								}
 							}
 							if(!client.Connected || heartbeatFailed)
@@ -77,6 +110,7 @@ namespace RemoteDebugger
 							Console.WriteLine(e.Message);
 							Console.WriteLine(e.StackTrace);
 						}
+						System.Threading.Thread.Sleep(100);
 					}
 
 					Console.WriteLine("[!!!] Connection Lost!");
@@ -96,8 +130,6 @@ namespace RemoteDebugger
 					Console.WriteLine("SocketException: {0}", e.Message);
 				}
 			}
-
-			Console.WriteLine("[!!!] Fatal error detected! Connection shutting down, please restart!");
 		}
 
 		private static void SendHeartbeet(object sender, ElapsedEventArgs e)

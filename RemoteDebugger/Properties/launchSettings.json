@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "RemoteDebugger": {
+      "commandName": "Project",
+      "commandLineArgs": "-i true"
+    }
+  }
+}
